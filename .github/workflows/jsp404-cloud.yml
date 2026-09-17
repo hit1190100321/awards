@@ -1,0 +1,60 @@
+name: 十一点证明云端核验
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/jsp404-cloud.yml
+      - scripts/jsp404_cloud_verify.py
+      - submissions/jsp-000404-eleven-point/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jsp404-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'hit1190100321/awards'
+    name: 重新编译证明并审计公理
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      LEAN_NUM_THREADS: '2'
+    steps:
+      - name: 取得公开源码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 安装 Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: 安装并校验固定 Lean 工具链
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/lean-4.34.0-linux.tar.zst"
+          curl --fail --location --retry 3 --output "$archive" \
+            https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux.tar.zst
+          printf '%s  %s\n' caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b "$archive" | sha256sum --check --strict
+          tar --zstd -xf "$archive" -C "$RUNNER_TEMP"
+          test -x "$RUNNER_TEMP/lean-4.34.0-linux/bin/lean"
+          printf '%s\n' "$RUNNER_TEMP/lean-4.34.0-linux/bin" >> "$GITHUB_PATH"
+      - name: 检查仓库并完整核验 Lean 证明
+        run: python -u scripts/jsp404_cloud_verify.py
+      - name: 保存核验记录
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jsp404-verification
+          path: .work/jsp404-cloud/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
